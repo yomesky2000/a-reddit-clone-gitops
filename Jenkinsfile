@@ -4,9 +4,9 @@ pipeline {
     }
 
     environment {
-        APP_NAME = "reddit-clone-pipeline"
-        DOCKER_USER = "ginger2000"
-        VERSION = "1.0.0"
+        APP_NAME     = "reddit-clone-pipeline"
+        DOCKER_USER  = "ginger2000"
+        VERSION      = "1.0.0"
     }
 
     stages {
@@ -30,24 +30,26 @@ pipeline {
                 script {
                     env.IMAGE_TAG = "${VERSION}-${BUILD_NUMBER}"
                     env.FULL_IMAGE = "${DOCKER_USER}/${APP_NAME}:${IMAGE_TAG}"
-                    echo "Full Docker image tag: ${env.FULL_IMAGE}"
+                    echo "Prepared Docker Image: ${FULL_IMAGE}"
                 }
             }
         }
 
         stage("Update the Deployment Tags") {
             steps {
-                sh """
-                    echo "Before updating deployment.yaml:"
-                    cat deployment.yaml
+                script {
+                    sh """
+                        echo "Before updating deployment.yaml:"
+                        cat deployment.yaml
 
-                    # Replace the line that starts with 'image: ' with the new image tag
-                    sed -i "s|image: .*|image: ${FULL_IMAGE}|g" deployment.yaml
+                        # Update the 'image:' line with the new FULL_IMAGE
+                        sed -i "s|image: .*|image: ${FULL_IMAGE}|g" deployment.yaml
 
-                    echo "After updating deployment.yaml:"
-                    cat deployment.yaml
-                """
-                echo "Deployment manifest updated successfully"
+                        echo "After updating deployment.yaml:"
+                        cat deployment.yaml
+                    """
+                    echo "Deployment manifest updated successfully"
+                }
             }
         }
 
@@ -60,7 +62,7 @@ pipeline {
                         git add deployment.yaml || true
                     """
 
-                    // Only commit and push if there are changes
+                    // Check if anything was actually staged
                     def hasChanges = sh(
                         script: 'git diff --cached --quiet || echo "changed"',
                         returnStdout: true
