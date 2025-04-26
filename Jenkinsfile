@@ -5,8 +5,6 @@ pipeline {
 
     environment {
         APP_NAME = "reddit-clone-pipeline"
-        DOCKER_USER = "ginger2000"
-        VERSION = "1.0.0"
     }
 
     stages {
@@ -21,16 +19,25 @@ pipeline {
                 git branch: 'main',
                     credentialsId: 'GitHub-Token',
                     url: 'https://github.com/yomesky2000/a-reddit-clone-gitops'
-                echo "GitOps Repo Cloned Successfully"
+                echo "Continuous Deployment GitOps Repo Cloned Successfully"
             }
         }
 
-        stage("Prepare Image Tag") {
+        stage("Get Latest Docker Image Tag") {
             steps {
                 script {
-                    env.IMAGE_TAG = "${VERSION}-${BUILD_NUMBER}"
-                    env.FULL_IMAGE = "${DOCKER_USER}/${APP_NAME}:${IMAGE_TAG}"
-                    echo "Full Docker image tag: ${env.FULL_IMAGE}"
+                    def imageName = "ginger2000/reddit-clone-pipeline"
+                    def response = sh(
+                        script: """curl -s https://hub.docker.com/v2/repositories/${imageName}/tags?page_size=1 | jq -r '.results[0].name'""",
+                        returnStdout: true
+                    ).trim()
+
+                    if (response) {
+                        env.IMAGE_TAG = response
+                        echo "Fetched latest Docker image tag: ${env.IMAGE_TAG}"
+                    } else {
+                        echo "Failed to fetch image tag. Falling back to Jenkins BUILD_NUMBER: ${env.IMAGE_TAG}"
+                    }
                 }
             }
         }
@@ -38,16 +45,18 @@ pipeline {
         stage("Update the Deployment Tags") {
             steps {
                 sh """
-                    echo "Before updating deployment.yaml:"
+                    echo "Using APP_NAME: ${APP_NAME}"
+                    echo "Using IMAGE_TAG: ${IMAGE_TAG}"
+
+                    echo "Before updating image tag:"
                     cat deployment.yaml
 
-                    # Replace the line that starts with 'image: ' with the new image tag
-                    sed -i "s|image: .*|image: ${FULL_IMAGE}|g" deployment.yaml
+                    sed -i "s|${APP_NAME}:.*|${APP_NAME}:${IMAGE_TAG}|g" deployment.yaml
 
-                    echo "After updating deployment.yaml:"
+                    echo "After updating image tag:"
                     cat deployment.yaml
                 """
-                echo "Deployment manifest updated successfully"
+                echo "Container tags updated successfully"
             }
         }
 
@@ -67,7 +76,7 @@ pipeline {
                     ).trim()
 
                     if (hasChanges == "changed") {
-                        sh "git commit -m 'Updated Deployment Manifest to ${FULL_IMAGE}'"
+                        sh "git commit -m 'Updated Deployment Manifest to ${IMAGE_TAG}'"
 
                         withCredentials([usernamePassword(
                             credentialsId: 'GitHub-Token',
@@ -77,7 +86,7 @@ pipeline {
                             sh """
                                 git push https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/yomesky2000/a-reddit-clone-gitops main
                             """
-                            echo "Changes pushed to GitHub"
+                            echo "Pushed updated deployment.yaml to GitHub"
                         }
                     } else {
                         echo "No changes to commit."
